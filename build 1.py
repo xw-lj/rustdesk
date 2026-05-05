@@ -14,10 +14,7 @@ from pathlib import Path
 windows = platform.platform().startswith('Windows')
 osx = platform.platform().startswith(
     'Darwin') or platform.platform().startswith("macOS")
-
-# 👇 只改这里：Windows 输出 XnckDesk.exe
-hbb_name = 'XnckDesk' + ('.exe' if windows else '')
-
+hbb_name = 'xnckdesk' + ('.exe' if windows else '')
 exe_path = 'target/release/' + hbb_name
 if windows:
     flutter_build_dir = 'build/windows/x64/runner/Release/'
@@ -81,7 +78,7 @@ def parse_rc_features(feature):
         return get_all_features()
     elif isinstance(feature, list):
         if windows:
-            # download third party resources is deprecated, we use github ci instead.
+            # download third party is deprecated, we use github ci instead.
             # feature.append('PrivacyMode')
             pass
         for feat in feature:
@@ -441,34 +438,61 @@ def build_flutter_windows(version, features, skip_portable_pack):
             print("cargo build failed, please check rust source code.")
             exit(-1)
     os.chdir('flutter')
+    # ========== 新增行1：编译前清理flutter缓存，避免旧产物干扰 ==========
     system2('flutter build windows --release')
     os.chdir('..')
     shutil.copy2('target/release/deps/dylib_virtual_display.dll',
                  flutter_build_dir_2)
     if skip_portable_pack:
         return
-    os.chdir('libs/portable')
-    system2('pip3 install -r requirements.txt')
     
-    # 👇 只改这里：打包时使用 XnckDesk.exe
-    system2(
-        f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/XnckDesk.exe')
+
+    # os.chdir('libs/portable')
+    # system2('pip3 install -r requirements.txt')
+    # 修改
+    # exe_full_path = os.path.join("../../", flutter_build_dir_2, "xnckdesk.exe")
+    # 修改system2(
+    #    f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e {exe_full_path}')
+    # system2(
+    #   f'python3 ./generate.py -f ../../{flutter_build_dir_2} -o . -e ../../{flutter_build_dir_2}/xnckdesk.exe')
+    # os.chdir('../..')
+    #==============================================================================
+    os.chdir('libs/portable')
+    # 【修改1】屏蔽pip版本提示，Windows下用pip而非pip3
+    system2('pip install -r requirements.txt -q --disable-pip-version-check')
+
+    # 【修改2】统一绝对路径 + 标准化分隔符（解决路径校验报错）
+    # 1. 获取源文件夹（-f参数）的绝对路径
+    src_folder = os.path.abspath(f"../../{flutter_build_dir_2}")
+    # 2. 拼接exe文件（-e参数）的绝对路径（确保在源文件夹内）
+    exe_file = os.path.join(src_folder, "xnckdesk.exe")
+    # 3. 标准化路径（统一Windows的\分隔符，避免/和\混用）
+    src_folder = os.path.normpath(src_folder)
+    exe_file = os.path.normpath(exe_file)
+
+    # 【修改3】提前校验：确保exe在源文件夹内，提前暴露问题
+    if not exe_file.startswith(src_folder):
+        print(f"错误：exe文件 {exe_file} 不在源文件夹 {src_folder} 内！")
+        sys.exit(-1)
+
+    # 【修改4】执行generate.py，参数加引号避免空格问题，用python而非python3
+    cmd = f'python ./generate.py -f "{src_folder}" -o . -e "{exe_file}"'
+    print(f"执行打包命令：{cmd}")  # 可选：打印命令便于排查
+    system2(cmd)
     
     os.chdir('../..')
-    if os.path.exists('./rustdesk_portable.exe'):
+    # =====================================================================
+    if os.path.exists('./xnckdesk_portable.exe'):
         os.replace('./target/release/rustdesk-portable-packer.exe',
-                   './rustdesk_portable.exe')
+                   './xnckdesk_portable.exe')
     else:
         os.rename('./target/release/rustdesk-portable-packer.exe',
-                  './rustdesk_portable.exe')
+                  './xnckdesk_portable.exe')
     print(
-        f'output location: {os.path.abspath(os.curdir)}/rustdesk_portable.exe')
-    
-    # 👇 只改这里：安装包文件名
-    os.rename('./rustdesk_portable.exe', f'./XnckDesk-{version}-install.exe')
-    
+        f'output location: {os.path.abspath(os.curdir)}/xnckdesk_portable.exe')
+    os.rename('./xnckdesk_portable.exe', f'./xnckdesk-{version}-install.exe')
     print(
-        f'output location: {os.path.abspath(os.curdir)}/XnckDesk-{version}-install.exe')
+        f'output location: {os.path.abspath(os.curdir)}/xnckdesk-{version}-install.exe')
 
 
 def main():
@@ -506,28 +530,22 @@ def main():
             return
         system2('cargo build --release --features ' + features)
         # system2('upx.exe target/release/rustdesk.exe')
-        
-        # 👇 只改这里：重命名为 XnckDesk.exe
-        system2('mv target/release/XnckDesk.exe target/release/XnckDesk.exe')
-        
+        system2('mv target/release/rustdesk.exe target/release/xnckdesk.exe')
         pa = os.environ.get('P')
         if pa:
             # https://certera.com/kb/tutorial-guide-for-safenet-authentication-client-for-code-signing/
             system2(
                 f'signtool sign /a /v /p {pa} /debug /f .\\cert.pfx /t http://timestamp.digicert.com  '
-                'target\\release\\XnckDesk.exe')
+                'target\\release\\xnckdesk.exe')
         else:
             print('Not signed')
         system2(
-            f'cp -rf target/release/XnckDesk.exe {res_dir}')
+            f'cp -rf target/release/xnckdesk.exe {res_dir}')
         os.chdir('libs/portable')
         system2('pip3 install -r requirements.txt')
-        
-        # 👇 只改这里：打包入口改为 XnckDesk.exe
         system2(
-            f'python3 ./generate.py -f ../../{res_dir} -o . -e ../../{res_dir}/XnckDesk-{version}-win7-install.exe')
-        
-        system2('mv ../../{res_dir}/XnckDesk-{version}-win7-install.exe ../..')
+            f'python3 ./generate.py -f ../../{res_dir} -o . -e ../../{res_dir}/xnckdesk-{version}-win7-install.exe')
+        system2('mv ../../{res_dir}/xnckdesk-{version}-win7-install.exe ../..')
     elif os.path.isfile('/usr/bin/pacman'):
         # pacman -S -needed base-devel
         system2("sed -i 's/pkgver=.*/pkgver=%s/g' res/PKGBUILD" % version)
@@ -586,6 +604,7 @@ def main():
     # buggy: rcodesign sign ... path/*, have to sign one by one
     # install rcodesign via cargo install apple-codesign
     #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk
+    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/libsciter.dylib
     #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app
     # goto "Keychain Access" -> "My Certificates" for below id which starts with "Developer ID Application:"
     codesign -s "Developer ID Application: {0}" --force --options runtime  ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/*
@@ -597,10 +616,10 @@ def main():
                           version, 'rustdesk-%s.dmg' % version)
                 if pa:
                     system2('''
-    # https://pyoxidizer.readthedocs.io/en/apple-codesign-0.14.0/apple-codesign.html
+    # https://pyoxidizer.readthedocs.io/en/apple-codesign-0.14.0/apple_codesign.html
     # https://pyoxidizer.readthedocs.io/en/stable/tugger_code_signing.html
     # https://developer.apple.com/developer-id/
-    # goto xcode and login with apple id, manager certificates (only download and double click (install) cer file can not export p12 because no private key)
+    # goto xcode and login with apple id, manager certificates (Developer ID Application and/or Developer ID Installer) online there (only download and double click (install) cer file can not export p12 because no private key)
     #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./rustdesk-{1}.dmg
     codesign -s "Developer ID Application: {0}" --force --options runtime ./rustdesk-{1}.dmg
     # https://appstoreconnect.apple.com/access/api

@@ -27,22 +27,17 @@ class PeerTabModel with ChangeNotifier {
     'Recent sessions',
     'Favorites',
     'Discovered',
-    // 'Address book',
-    // 'Accessible devices',
   ];
   static const List<IconData> icons = [
     Icons.access_time_filled,
     Icons.star,
     Icons.explore,
-    //  IconFont.addressBook,
-    //  IconFont.deviceGroupFill,
   ];
   List<bool> isEnabled = List.from([
     true,
     true,
     !isWeb && bind.mainGetLocalOption(key: "disable-discovery-panel") != "Y",
     !(bind.isDisableAb() || bind.isDisableAccount()),
-    //  !(bind.isDisableGroupPanel() || bind.isDisableAccount()),
   ]);
   final List<bool> _isVisible = List.filled(maxTabCount, true, growable: false);
   List<bool> get isVisibleEnabled => () {
